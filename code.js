@@ -1129,61 +1129,99 @@ figma.ui.onmessage = (msg) => __awaiter(void 0, void 0, void 0, function* () {
                 }
                 else {
                     const inspectNode = (n, depth) => {
-                        const info = {
-                            id: n.id, name: n.name, type: n.type,
-                            width: Math.round(n.width), height: Math.round(n.height),
-                            x: Math.round(n.x), y: Math.round(n.y),
-                        };
-                        // fills
-                        if ("fills" in n && Array.isArray(n.fills) && n.fills.length > 0) {
-                            const f = n.fills[0];
-                            if (f.type === "SOLID") {
-                                info.fill = "#" + [f.color.r, f.color.g, f.color.b].map((c) => Math.round(c * 255).toString(16).padStart(2, "0")).join("");
+                        try {
+                            const info = {
+                                id: n.id, name: n.name, type: n.type,
+                                width: Math.round(n.width), height: Math.round(n.height),
+                                x: Math.round(n.x), y: Math.round(n.y),
+                            };
+                            try {
+                                if ("fills" in n) {
+                                    const fills = n.fills;
+                                    if (Array.isArray(fills) && fills.length > 0 && fills[0].type === "SOLID") {
+                                        const f = fills[0];
+                                        info.fill = "#" + [f.color.r, f.color.g, f.color.b].map((c) => Math.round(c * 255).toString(16).padStart(2, "0")).join("");
+                                    }
+                                }
                             }
-                        }
-                        // corner radius
-                        if ("cornerRadius" in n && typeof n.cornerRadius === "number") {
-                            info.cornerRadius = n.cornerRadius;
-                        }
-                        // text
-                        if (n.type === "TEXT") {
-                            const tn = n;
-                            info.characters = tn.characters;
-                            info.fontSize = tn.fontSize;
-                            info.fontName = tn.fontName;
-                            info.fontWeight = typeof tn.fontWeight === "number" ? tn.fontWeight : undefined;
-                            info.textAlignHorizontal = tn.textAlignHorizontal;
-                            info.lineHeight = tn.lineHeight;
-                        }
-                        // auto layout
-                        if ("layoutMode" in n) {
-                            const frame = n;
-                            if (frame.layoutMode !== "NONE") {
-                                info.layoutMode = frame.layoutMode;
-                                info.itemSpacing = frame.itemSpacing;
-                                info.paddingTop = frame.paddingTop;
-                                info.paddingRight = frame.paddingRight;
-                                info.paddingBottom = frame.paddingBottom;
-                                info.paddingLeft = frame.paddingLeft;
+                            catch (e) { }
+                            try {
+                                const cr = n.cornerRadius;
+                                if (typeof cr === "number")
+                                    info.cornerRadius = cr;
                             }
-                        }
-                        // opacity
-                        if ("opacity" in n && n.opacity !== 1) {
-                            info.opacity = n.opacity;
-                        }
-                        // strokes
-                        if ("strokes" in n && Array.isArray(n.strokes) && n.strokes.length > 0) {
-                            const s = n.strokes[0];
-                            if (s.type === "SOLID") {
-                                info.stroke = "#" + [s.color.r, s.color.g, s.color.b].map((c) => Math.round(c * 255).toString(16).padStart(2, "0")).join("");
-                                info.strokeWeight = n.strokeWeight;
+                            catch (e) { }
+                            if (n.type === "TEXT") {
+                                const tn = n;
+                                try {
+                                    info.characters = tn.characters;
+                                }
+                                catch (e) { }
+                                try {
+                                    const fs = tn.fontSize;
+                                    info.fontSize = typeof fs === "number" ? fs : "mixed";
+                                }
+                                catch (e) { }
+                                try {
+                                    const fn = tn.fontName;
+                                    if (fn && typeof fn === "object" && "family" in fn)
+                                        info.fontName = { family: fn.family, style: fn.style };
+                                }
+                                catch (e) { }
+                                try {
+                                    info.textAlignHorizontal = String(tn.textAlignHorizontal);
+                                }
+                                catch (e) { }
+                                try {
+                                    const lh = tn.lineHeight;
+                                    if (lh && typeof lh === "object" && "unit" in lh) {
+                                        info.lineHeight = { unit: lh.unit, value: lh.value };
+                                    }
+                                }
+                                catch (e) { }
                             }
+                            try {
+                                if ("layoutMode" in n) {
+                                    const frame = n;
+                                    const lm = String(frame.layoutMode);
+                                    if (lm !== "NONE") {
+                                        info.layoutMode = lm;
+                                        info.itemSpacing = frame.itemSpacing;
+                                        info.paddingTop = frame.paddingTop;
+                                        info.paddingRight = frame.paddingRight;
+                                        info.paddingBottom = frame.paddingBottom;
+                                        info.paddingLeft = frame.paddingLeft;
+                                    }
+                                }
+                            }
+                            catch (e) { }
+                            try {
+                                if ("opacity" in n && n.opacity !== 1)
+                                    info.opacity = n.opacity;
+                            }
+                            catch (e) { }
+                            try {
+                                if ("strokes" in n) {
+                                    const strokes = n.strokes;
+                                    if (Array.isArray(strokes) && strokes.length > 0 && strokes[0].type === "SOLID") {
+                                        const s = strokes[0];
+                                        info.stroke = "#" + [s.color.r, s.color.g, s.color.b].map((c) => Math.round(c * 255).toString(16).padStart(2, "0")).join("");
+                                        info.strokeWeight = n.strokeWeight;
+                                    }
+                                }
+                            }
+                            catch (e) { }
+                            try {
+                                if ("children" in n && depth < 3) {
+                                    info.children = n.children.map((c) => inspectNode(c, depth + 1));
+                                }
+                            }
+                            catch (e) { }
+                            return info;
                         }
-                        // children (depth 제한)
-                        if ("children" in n && depth < 3) {
-                            info.children = n.children.map((c) => inspectNode(c, depth + 1));
+                        catch (e) {
+                            return { id: n.id, name: n.name, type: n.type, error: String(e) };
                         }
-                        return info;
                     };
                     result = sel.map((n) => inspectNode(n, 0));
                 }
@@ -1219,7 +1257,14 @@ figma.ui.onmessage = (msg) => __awaiter(void 0, void 0, void 0, function* () {
                     return info;
                 });
             }
-            figma.ui.postMessage({ action: "mcp-result", commandId: cmdId, result });
+            // JSON 직렬화 검증 후 전송
+            try {
+                const safeResult = JSON.parse(JSON.stringify(result));
+                figma.ui.postMessage({ action: "mcp-result", commandId: cmdId, result: safeResult });
+            }
+            catch (serErr) {
+                figma.ui.postMessage({ action: "mcp-result", commandId: cmdId, result: { error: "직렬화 실패: " + String(serErr) } });
+            }
         }
         catch (e) {
             figma.ui.postMessage({ action: "mcp-result", commandId: cmdId, result: { error: e.message } });
