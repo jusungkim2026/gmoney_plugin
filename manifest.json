@@ -5,6 +5,9 @@
   "main": "code.js",
   "ui": "ui.html",
   "editorType": ["figma"],
-  "networkAccess": { "allowedDomains": ["none"] },
-  "documentAccess": "dynamic-page"
+  "networkAccess": {
+    "allowedDomains": ["none"],
+    "reasoning": "MCP bridge for DS component automation",
+    "devAllowedDomains": ["http://localhost:3845"]
+  }
 }

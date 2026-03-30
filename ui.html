@@ -96,6 +96,10 @@
 <body>
   <h2>Gmoney DS Builder</h2>
   <div id="status" class="status">준비됨</div>
+  <div id="mcp-bar" style="display:flex;gap:6px;margin-bottom:8px;">
+    <button class="btn btn-secondary btn-small" id="mcp-btn" onclick="toggleMCP()" style="flex:1;">MCP 연결</button>
+    <div id="mcp-status" style="font-size:11px;color:#9aa5b8;display:flex;align-items:center;">미연결</div>
+  </div>
 
   <div class="tab-bar">
     <div class="tab active" onclick="switchTab('html', this)">HTML 가져오기</div>
@@ -200,6 +204,243 @@
     document.getElementById('tab-html').style.display = tab === 'html' ? 'block' : 'none';
     document.getElementById('tab-apply').style.display = tab === 'apply' ? 'block' : 'none';
     document.getElementById('tab-build').style.display = tab === 'build' ? 'block' : 'none';
+  }
+
+  // --- 이미지 캡처 (html-to-image 자체 구현) ---
+  async function captureElementToPng(el, doc) {
+    // 1) 노드 클론 + 스타일 인라인화
+    var clone = el.cloneNode(true);
+    inlineAllStyles(el, clone, doc);
+
+    // 2) SVG foreignObject로 감싸기
+    var w = el.offsetWidth || 360;
+    var h = el.offsetHeight || 800;
+
+    // HTML 정리: XHTML 호환
+    var serializer = new XMLSerializer();
+    var cleanHtml;
+    try {
+      // XMLSerializer가 XHTML로 직렬화해줌 (자체 닫힘 태그 등 처리)
+      cleanHtml = serializer.serializeToString(clone);
+      // xmlns 중복 제거
+      cleanHtml = cleanHtml.replace(/\sxmlns="[^"]*"/g, function(match, offset) {
+        return offset < 50 ? match : '';
+      });
+    } catch (e) {
+      // 폴백: outerHTML + 수동 정리
+      cleanHtml = clone.outerHTML
+        .replace(/\s(on\w+)="[^"]*"/g, '')
+        .replace(/\s(on\w+)='[^']*'/g, '')
+        .replace(/<br>/g, '<br/>')
+        .replace(/<hr>/g, '<hr/>')
+        .replace(/<img([^>]*[^/])>/g, '<img$1/>')
+        .replace(/<input([^>]*[^/])>/g, '<input$1/>');
+    }
+
+    var svgStr = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">'
+      + '<foreignObject width="100%" height="100%">'
+      + '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + w + 'px;height:' + h + 'px;overflow:hidden;">'
+      + cleanHtml
+      + '</div></foreignObject></svg>';
+
+    // 3) SVG → Image → Canvas → PNG
+    return new Promise(function(resolve, reject) {
+      var img = new Image();
+      img.onload = function() {
+        var canvas = document.createElement('canvas');
+        canvas.width = w * 2;  // 2x for retina
+        canvas.height = h * 2;
+        var ctx = canvas.getContext('2d');
+        ctx.scale(2, 2);
+        ctx.drawImage(img, 0, 0);
+        // base64 PNG
+        var dataUrl = canvas.toDataURL('image/png');
+        resolve({ dataUrl: dataUrl, width: w, height: h });
+      };
+      img.onerror = function(e) { reject(new Error('이미지 변환 실패')); };
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
+    });
+  }
+
+  function inlineAllStyles(orig, clone, doc) {
+    if (orig.nodeType !== 1 || clone.nodeType !== 1) return;
+
+    var tag = orig.tagName.toLowerCase();
+
+    // SVG와 그 자식은 건드리지 않음 (namespace 깨짐 방지)
+    if (tag === 'svg' || orig.closest && orig.closest('svg')) {
+      // SVG에 xmlns 보장
+      if (tag === 'svg' && !clone.getAttribute('xmlns')) {
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      }
+      return;
+    }
+
+    var cs = doc.defaultView.getComputedStyle(orig);
+
+    var props = [
+      'display','visibility','opacity',
+      'width','height','min-width','min-height','max-width','max-height',
+      'margin','margin-top','margin-right','margin-bottom','margin-left',
+      'padding','padding-top','padding-right','padding-bottom','padding-left',
+      'background-color','background-image','background-size','background-position','background-repeat',
+      'color','font-size','font-weight','font-family','font-style','line-height','letter-spacing','text-align','text-decoration','text-transform','white-space','word-break','overflow-wrap',
+      'border','border-top','border-right','border-bottom','border-left','border-radius','border-color','border-width','border-style',
+      'box-shadow','outline',
+      'position','top','right','bottom','left','z-index',
+      'overflow','overflow-x','overflow-y',
+      'flex-direction','align-items','justify-content','flex-wrap','gap','flex','flex-grow','flex-shrink','flex-basis','align-self',
+      'grid-template-columns','grid-template-rows','grid-gap',
+      'transform','transform-origin',
+      'box-sizing','vertical-align'
+    ];
+
+    var styleStr = '';
+    for (var i = 0; i < props.length; i++) {
+      var val = cs.getPropertyValue(props[i]);
+      if (val && val !== 'none' && val !== 'normal' && val !== 'auto') {
+        styleStr += props[i] + ':' + val + ';';
+      }
+    }
+    clone.setAttribute('style', styleStr);
+    clone.removeAttribute('class');
+
+    // input placeholder 보존
+    if (tag === 'input' && orig.placeholder) {
+      clone.setAttribute('value', orig.placeholder);
+    }
+
+    // 자식 재귀
+    var origChildren = orig.children;
+    var cloneChildren = clone.children;
+    for (var i = 0; i < origChildren.length && i < cloneChildren.length; i++) {
+      inlineAllStyles(origChildren[i], cloneChildren[i], doc);
+    }
+  }
+
+  // 텍스트 노드 + 인터랙티브 요소 추출
+  function extractTextAndElements(el, parentRect) {
+    var results = { texts: [], zones: [] };
+    walkForExtract(el, parentRect, results);
+    return results;
+  }
+
+  function walkForExtract(el, parentRect, results) {
+    if (!el || el.nodeType !== 1) return;
+    var tag = el.tagName.toLowerCase();
+    if (tag === 'script' || tag === 'style') return;
+
+    var cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return;
+
+    var rect = el.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return;
+
+    // 버튼/인풋 → 인터랙티브 존
+    if (tag === 'button' || tag === 'input' || (el.getAttribute && el.getAttribute('onclick'))) {
+      results.zones.push({
+        x: Math.round(rect.left - parentRect.left),
+        y: Math.round(rect.top - parentRect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        tag: tag,
+        text: el.textContent ? el.textContent.trim().substring(0, 40) : '',
+        placeholder: el.placeholder || ''
+      });
+    }
+
+    // 텍스트 노드 추출 (리프 텍스트만)
+    var hasDirectText = false;
+    var directText = '';
+    for (var i = 0; i < el.childNodes.length; i++) {
+      if (el.childNodes[i].nodeType === 3) {
+        var t = el.childNodes[i].textContent.trim();
+        if (t) { directText += (directText ? ' ' : '') + t; hasDirectText = true; }
+      }
+    }
+
+    if (hasDirectText && directText) {
+      results.texts.push({
+        text: directText,
+        x: Math.round(rect.left - parentRect.left),
+        y: Math.round(rect.top - parentRect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        fontSize: parseFloat(cs.fontSize) || 14,
+        fontWeight: parseInt(cs.fontWeight) || 400,
+        color: cs.color || '#131720',
+        textAlign: cs.textAlign || 'left'
+      });
+    }
+
+    // 자식 재귀
+    for (var i = 0; i < el.children.length; i++) {
+      walkForExtract(el.children[i], parentRect, results);
+    }
+  }
+
+  // --- MCP 브릿지 연결 ---
+  var mcpConnected = false;
+  var mcpInterval = null;
+  var BRIDGE_URL = 'http://localhost:3845';
+
+  function toggleMCP() {
+    if (mcpConnected) { disconnectMCP(); } else { connectMCP(); }
+  }
+
+  function connectMCP() {
+    document.getElementById('mcp-status').textContent = '연결 중...';
+    document.getElementById('mcp-status').style.color = '#e65100';
+
+    // 서버 상태 확인
+    fetch(BRIDGE_URL + '/status').then(function(r) { return r.json(); }).then(function(data) {
+      mcpConnected = true;
+      document.getElementById('mcp-btn').textContent = 'MCP 연결 해제';
+      document.getElementById('mcp-btn').style.background = '#e8f5e9';
+      document.getElementById('mcp-btn').style.color = '#2e7d32';
+      document.getElementById('mcp-status').textContent = '연결됨';
+      document.getElementById('mcp-status').style.color = '#2e7d32';
+      setStatus('MCP 브릿지 연결됨', 'success');
+
+      // 명령 폴링 시작
+      mcpInterval = setInterval(pollCommands, 500);
+    }).catch(function(e) {
+      document.getElementById('mcp-status').textContent = '서버 없음';
+      document.getElementById('mcp-status').style.color = '#c62828';
+      setStatus('브릿지 서버를 먼저 실행하세요: node figma-bridge/server.js', 'error');
+    });
+  }
+
+  function disconnectMCP() {
+    mcpConnected = false;
+    if (mcpInterval) clearInterval(mcpInterval);
+    document.getElementById('mcp-btn').textContent = 'MCP 연결';
+    document.getElementById('mcp-btn').style.background = '#f5f7fa';
+    document.getElementById('mcp-btn').style.color = '#131720';
+    document.getElementById('mcp-status').textContent = '미연결';
+    document.getElementById('mcp-status').style.color = '#9aa5b8';
+  }
+
+  function pollCommands() {
+    if (!mcpConnected) return;
+    fetch(BRIDGE_URL + '/api/commands').then(function(r) { return r.json(); }).then(function(cmds) {
+      cmds.forEach(function(cmd) {
+        // 플러그인으로 명령 전달
+        parent.postMessage({ pluginMessage: { action: 'mcp-command', command: cmd } }, '*');
+      });
+    }).catch(function(e) {
+      // 연결 끊김
+      disconnectMCP();
+    });
+  }
+
+  function sendMCPResult(id, result) {
+    if (!mcpConnected) return;
+    fetch(BRIDGE_URL + '/api/results', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, result: result })
+    }).catch(function() {});
   }
 
   // --- 파일 불러오기 ---
@@ -321,21 +562,20 @@
     var screen = screens[index];
     var screenId = screen.id || ('screen-' + index);
     var screenName = nameMap[screenId] || (baseName + ' - ' + screenId);
-    log.textContent = '(' + (index + 1) + '/' + screens.length + ') ' + screenName + ' 파싱 중...';
+    log.textContent = '(' + (index + 1) + '/' + screens.length + ') ' + screenName + ' 캡처 중...';
 
-    // 각 화면을 독립 iframe으로 렌더링 (360x800)
+    // CSS 추출
     var styleText = '';
     var origDoc = doc;
     var styleTags = origDoc.querySelectorAll('style');
     for (var s = 0; s < styleTags.length; s++) styleText += styleTags[s].textContent + '\n';
 
-    // status bar + nav bar HTML 추출
     var statusBar = phoneEl ? phoneEl.querySelector('.status-bar') : null;
     var navBar = phoneEl ? phoneEl.querySelector('.nav-bar') : null;
     var statusHtml = statusBar ? statusBar.outerHTML : '';
     var navHtml = navBar ? navBar.outerHTML : '';
 
-    // 독립 iframe 생성
+    // 독립 iframe
     var screenIframe = document.createElement('iframe');
     screenIframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:360px;height:800px;border:none;';
     document.body.appendChild(screenIframe);
@@ -343,7 +583,7 @@
     var sdoc = screenIframe.contentDocument;
     sdoc.open();
     sdoc.write('<!DOCTYPE html><html><head><style>' + styleText +
-      'body{margin:0;padding:0;width:360px;height:800px;overflow:hidden;font-family:Roboto,sans-serif;background:#fff;}' +
+      'body{margin:0;padding:0;width:360px;height:800px;overflow:hidden;font-family:Roboto,Noto Sans KR,sans-serif;background:#fff;}' +
       '.screen{display:block!important;}' +
       '.phone{display:none;}' +
       '</style></head><body>' +
@@ -352,35 +592,62 @@
       '</div></body></html>');
     sdoc.close();
 
-    setTimeout(function() {
+    setTimeout(async function() {
       try {
         var rootEl = sdoc.body.firstElementChild;
         if (!rootEl) throw new Error('루트 요소 없음');
 
+        // ★ 하이브리드: 이미지 캡처 + 텍스트/요소 추출
+        var capture = await captureElementToPng(rootEl, sdoc);
         var parentRect = rootEl.getBoundingClientRect();
-        var tree = walkRenderedNode(sdoc, rootEl, parentRect, 0);
-        if (!tree) throw new Error('파싱 실패');
+        var extracted = extractTextAndElements(rootEl, parentRect);
 
-        tree.styles.width = '360px';
-        tree.styles.height = '800px';
-        tree.x = 0;
-        tree.y = 0;
+        // base64 → Uint8Array (피그마용)
+        var base64 = capture.dataUrl.split(',')[1];
 
-        parent.postMessage({ pluginMessage: { action: 'import-html', tree: tree, name: screenName, screenIndex: index, totalScreens: screens.length } }, '*');
+        parent.postMessage({ pluginMessage: {
+          action: 'hybrid-import',
+          imageBase64: base64,
+          width: capture.width,
+          height: capture.height,
+          texts: extracted.texts,
+          zones: extracted.zones,
+          name: screenName,
+          screenIndex: index,
+          totalScreens: screens.length
+        }}, '*');
 
         screenIframe.remove();
+        log.textContent = '(' + (index + 1) + '/' + screens.length + ') ' + screenName + ' 완료';
 
         setTimeout(function() {
           importScreensSequentially(origDoc, screens, phoneEl, baseName, index + 1);
-        }, 1000);
+        }, 1200);
       } catch (e) {
-        log.textContent = screenName + ' 에러: ' + e.message;
+        log.textContent = screenName + ' 이미지 캡처 실패, 프레임 방식으로 폴백...';
+
+        // 폴백: 기존 프레임 방식
+        try {
+          var rootEl2 = sdoc.body.firstElementChild;
+          if (rootEl2) {
+            var parentRect2 = rootEl2.getBoundingClientRect();
+            var tree = walkRenderedNode(sdoc, rootEl2, parentRect2, 0);
+            if (tree) {
+              tree.styles.width = '360px';
+              tree.styles.height = '800px';
+              tree.x = 0;
+              tree.y = 0;
+              parent.postMessage({ pluginMessage: { action: 'import-html', tree: tree, name: screenName, screenIndex: index, totalScreens: screens.length } }, '*');
+            }
+          }
+        } catch (e2) {}
+
         screenIframe.remove();
         setTimeout(function() {
           importScreensSequentially(origDoc, screens, phoneEl, baseName, index + 1);
-        }, 300);
+        }, 1200);
       }
-    }, 600);
+    }, 800);
   }
 
   // getBoundingClientRect 기반 — 브라우저 렌더링 결과를 그대로 사용
@@ -748,6 +1015,10 @@
       }
     }
 
+    if (msg.action === 'mcp-result') {
+      sendMCPResult(msg.commandId, msg.result);
+    }
+
     if (msg.action === 'build-by-name-result') {
       if (msg.placed > 0) {
         setStatus(msg.placed + '/' + msg.total + '개 컴포넌트 생성 완료!', 'success');
@@ -757,5 +1028,6 @@
     }
   };
 </script>
+<!-- cache-bust: 20260330v2 -->
 </body>
 </html>

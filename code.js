@@ -351,54 +351,202 @@ function replaceWithComponent(detected, componentMap) {
         return true;
     });
 }
-// ============================================================
-// 6) JSON 기반 이름 매칭 빌드 (화면 조립 탭용)
-// ============================================================
-function buildByName(spec) {
+function buildScreen(spec, screenIndex) {
     return __awaiter(this, void 0, void 0, function* () {
+        yield loadFonts();
+        if (cachedComponents.length === 0)
+            cachedComponents = scanComponents();
         const frame = figma.createFrame();
         frame.name = spec.name;
         frame.resize(spec.width, spec.height);
-        frame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+        frame.fills = [{ type: "SOLID", color: parseColor(spec.bg || "#ffffff") || { r: 1, g: 1, b: 1 } }];
         frame.layoutMode = "VERTICAL";
         frame.primaryAxisAlignItems = "MIN";
         frame.counterAxisAlignItems = "MIN";
         frame.itemSpacing = 0;
         frame.counterAxisSizingMode = "FIXED";
-        frame.primaryAxisSizingMode = "AUTO";
-        let placed = 0;
+        frame.primaryAxisSizingMode = "FIXED";
+        if (spec.padding) {
+            frame.paddingTop = spec.padding.top;
+            frame.paddingRight = spec.padding.right;
+            frame.paddingBottom = spec.padding.bottom;
+            frame.paddingLeft = spec.padding.left;
+        }
         for (const el of spec.elements) {
-            const nameLC = el.componentName.toLowerCase().replace(/[\s_\-]/g, "");
+            const node = yield createElementNode(el, spec.width - (spec.padding ? spec.padding.left + spec.padding.right : 0));
+            if (node)
+                frame.appendChild(node);
+        }
+        return frame;
+    });
+}
+function createElementNode(el, parentWidth) {
+    return __awaiter(this, void 0, void 0, function* () {
+        // type 자동 감지 (없으면 componentName으로 판단)
+        if (!el.type && el.componentName)
+            el.type = "component";
+        if (!el.type && el.text && !el.componentName)
+            el.type = "text";
+        // 여백
+        if (el.type === "spacer") {
+            const spacer = figma.createFrame();
+            spacer.name = "spacer";
+            spacer.resize(parentWidth, el.height || 16);
+            spacer.fills = [];
+            return spacer;
+        }
+        // 텍스트
+        if (el.type === "text") {
+            const wrapper = figma.createFrame();
+            wrapper.name = el.text ? el.text.substring(0, 20) : "text";
+            wrapper.fills = [];
+            wrapper.layoutMode = "VERTICAL";
+            wrapper.counterAxisSizingMode = "FIXED";
+            wrapper.primaryAxisSizingMode = "AUTO";
+            wrapper.resize(el.fillWidth !== false ? parentWidth : (el.width || parentWidth), 1);
+            if (el.marginTop)
+                wrapper.paddingTop = el.marginTop;
+            const fw = el.fontWeight || 400;
+            let font = DEFAULT_FONT;
+            if (fw >= 700)
+                font = BOLD_FONT;
+            else if (fw >= 500)
+                font = MEDIUM_FONT;
+            yield figma.loadFontAsync(font);
+            const textNode = figma.createText();
+            textNode.fontName = font;
+            textNode.characters = el.text || " ";
+            textNode.fontSize = el.fontSize || 14;
+            const color = parseColor(el.color || "#131720");
+            if (color)
+                textNode.fills = [{ type: "SOLID", color }];
+            if (el.align)
+                textNode.textAlignHorizontal = el.align;
+            textNode.layoutAlign = "STRETCH";
+            textNode.textAutoResize = "HEIGHT";
+            wrapper.appendChild(textNode);
+            return wrapper;
+        }
+        // DS 컴포넌트
+        if (el.type === "component") {
+            const nameLC = (el.componentName || "").toLowerCase().replace(/[\s_\-]/g, "");
             const matched = cachedComponents.find((c) => c.type === "COMPONENT_SET" && c.name.toLowerCase().replace(/[\s_\-]/g, "") === nameLC) || cachedComponents.find((c) => c.type === "COMPONENT" && c.name.toLowerCase().replace(/[\s_\-]/g, "") === nameLC);
-            let instance = null;
             if (matched) {
-                instance = matched.type === "COMPONENT_SET"
-                    ? createInstanceFromSet(matched.id, el.variantProps)
+                const instance = matched.type === "COMPONENT_SET"
+                    ? createInstanceFromSet(matched.id, el.variantProps || {})
                     : createInstanceFromComponent(matched.id);
-            }
-            if (instance) {
-                if (el.overrides) {
-                    for (const [layerName, text] of Object.entries(el.overrides)) {
-                        const textNodes = instance.findAll((n) => n.type === "TEXT" && n.name === layerName);
-                        for (const tn of textNodes) {
-                            try {
-                                yield figma.loadFontAsync(tn.fontName);
-                                tn.characters = text;
+                if (instance) {
+                    if (el.overrides) {
+                        for (const [layerName, text] of Object.entries(el.overrides)) {
+                            const textNodes = instance.findAll((n) => n.type === "TEXT" && n.name === layerName);
+                            for (const tn of textNodes) {
+                                try {
+                                    yield figma.loadFontAsync(tn.fontName);
+                                    tn.characters = text;
+                                }
+                                catch (e) { }
                             }
-                            catch (e) { }
                         }
                     }
+                    // 여백 처리
+                    if (el.marginTop) {
+                        const wrapper = figma.createFrame();
+                        wrapper.name = el.componentName || "component";
+                        wrapper.fills = [];
+                        wrapper.layoutMode = "VERTICAL";
+                        wrapper.counterAxisSizingMode = "AUTO";
+                        wrapper.primaryAxisSizingMode = "AUTO";
+                        wrapper.paddingTop = el.marginTop;
+                        wrapper.appendChild(instance);
+                        return wrapper;
+                    }
+                    return instance;
                 }
-                frame.appendChild(instance);
-                placed++;
             }
+            return null;
         }
-        const center = figma.viewport.center;
-        frame.x = Math.round(center.x);
-        frame.y = Math.round(center.y);
-        figma.currentPage.appendChild(frame);
-        figma.viewport.scrollAndZoomIntoView([frame]);
-        return { placed, total: spec.elements.length };
+        // 커스텀 프레임 (인풋, 박스 등)
+        if (el.type === "frame") {
+            const f = figma.createFrame();
+            f.name = el.text || "frame";
+            f.resize(el.fillWidth !== false ? parentWidth : (el.width || parentWidth), el.height || 56);
+            const bg = parseColor(el.bg || "");
+            f.fills = bg ? [{ type: "SOLID", color: bg }] : [];
+            if (el.borderRadius)
+                f.cornerRadius = el.borderRadius;
+            if (el.borderColor) {
+                const bc = parseColor(el.borderColor);
+                if (bc) {
+                    f.strokes = [{ type: "SOLID", color: bc }];
+                    f.strokeWeight = el.borderWidth || 1;
+                }
+            }
+            if (el.padding) {
+                f.paddingTop = el.padding;
+                f.paddingRight = el.padding;
+                f.paddingBottom = el.padding;
+                f.paddingLeft = el.padding;
+            }
+            if (el.marginTop) {
+                const wrapper = figma.createFrame();
+                wrapper.name = "wrapper";
+                wrapper.fills = [];
+                wrapper.layoutMode = "VERTICAL";
+                wrapper.counterAxisSizingMode = "AUTO";
+                wrapper.primaryAxisSizingMode = "AUTO";
+                wrapper.paddingTop = el.marginTop;
+                wrapper.appendChild(f);
+                return wrapper;
+            }
+            // 텍스트가 있으면 안에 배치
+            if (el.text) {
+                f.layoutMode = "HORIZONTAL";
+                f.counterAxisAlignItems = "CENTER";
+                f.primaryAxisAlignItems = "MIN";
+                f.paddingLeft = el.padding || 16;
+                f.paddingRight = el.padding || 16;
+                const fw = el.fontWeight || 400;
+                let font = DEFAULT_FONT;
+                if (fw >= 700)
+                    font = BOLD_FONT;
+                else if (fw >= 500)
+                    font = MEDIUM_FONT;
+                yield figma.loadFontAsync(font);
+                const tn = figma.createText();
+                tn.fontName = font;
+                tn.characters = el.text;
+                tn.fontSize = el.fontSize || 16;
+                const tc = parseColor(el.color || "#9aa5b8");
+                if (tc)
+                    tn.fills = [{ type: "SOLID", color: tc }];
+                f.appendChild(tn);
+            }
+            return f;
+        }
+        // 가로 배치 (row)
+        if (el.type === "row") {
+            const row = figma.createFrame();
+            row.name = "row";
+            row.fills = [];
+            row.layoutMode = "HORIZONTAL";
+            row.counterAxisAlignItems = "CENTER";
+            row.primaryAxisAlignItems = "CENTER";
+            row.itemSpacing = el.gap || 8;
+            row.counterAxisSizingMode = "AUTO";
+            row.primaryAxisSizingMode = "FIXED";
+            row.resize(parentWidth, 1);
+            if (el.marginTop)
+                row.paddingTop = el.marginTop;
+            if (el.children) {
+                for (const child of el.children) {
+                    const childNode = yield createElementNode(child, parentWidth);
+                    if (childNode)
+                        row.appendChild(childNode);
+                }
+            }
+            return row;
+        }
+        return null;
     });
 }
 function hexToRgb(hex) {
@@ -751,13 +899,140 @@ figma.ui.onmessage = (msg) => __awaiter(void 0, void 0, void 0, function* () {
         });
         figma.ui.postMessage({ action: "preview-result", matches });
     }
-    // 이름 기반 빌드 (화면 조립 탭)
+    // 화면 조립
     if (msg.action === "build-by-name") {
-        const result = yield buildByName(msg.spec);
-        figma.notify("✅ " + result.placed + "/" + result.total + "개 컴포넌트 배치: " + msg.spec.name);
-        figma.ui.postMessage({ action: "build-by-name-result", placed: result.placed, total: result.total });
+        const spec = msg.spec;
+        const screenIndex = msg.screenIndex || 0;
+        const totalScreens = msg.totalScreens || 1;
+        try {
+            if (cachedComponents.length === 0)
+                cachedComponents = scanComponents();
+            // 디버그: Popup 매칭 확인
+            const popupComps = cachedComponents.filter((c) => c.name.toLowerCase().includes("popup"));
+            figma.notify("Popup 관련: " + popupComps.map((c) => c.name + "(" + c.type + ")").join(", "), { timeout: 8000 });
+            const frame = yield buildScreen(spec, screenIndex);
+            if (screenIndex === 0) {
+                const center = figma.viewport.center;
+                importStartX = Math.round(center.x);
+                importStartY = Math.round(center.y);
+            }
+            frame.x = importStartX + screenIndex * (spec.width + 40);
+            frame.y = importStartY;
+            figma.currentPage.appendChild(frame);
+            if (screenIndex === totalScreens - 1) {
+                const allFrames = [];
+                for (let i = 0; i <= screenIndex; i++) {
+                    const n = figma.currentPage.children[figma.currentPage.children.length - 1 - (screenIndex - i)];
+                    if (n)
+                        allFrames.push(n);
+                }
+                figma.viewport.scrollAndZoomIntoView(allFrames);
+            }
+            figma.notify("✅ (" + (screenIndex + 1) + "/" + totalScreens + ") " + spec.name);
+            figma.ui.postMessage({ action: "build-by-name-result", placed: spec.elements.length, total: spec.elements.length });
+        }
+        catch (e) {
+            figma.notify("조립 실패: " + (e.message || e) + " / " + (e.stack || "").substring(0, 150), { timeout: 10000 });
+            figma.ui.postMessage({ action: "build-by-name-result", placed: 0, total: 0 });
+        }
     }
-    // ★ HTML 가져오기
+    // ★ 하이브리드 임포트 (이미지 + 텍스트 오버레이)
+    if (msg.action === "hybrid-import") {
+        const { imageBase64, width, height, texts, zones, name, screenIndex, totalScreens } = msg;
+        try {
+            yield loadFonts();
+            // 1) base64 → Uint8Array
+            const raw = figma.base64Decode(imageBase64);
+            // 2) 이미지 생성
+            const image = figma.createImage(raw);
+            // 3) 프레임 생성 + 이미지 배경
+            const frame = figma.createFrame();
+            frame.name = name || "Imported Screen";
+            frame.resize(width, height);
+            frame.fills = [{
+                    type: "IMAGE",
+                    imageHash: image.hash,
+                    scaleMode: "FILL",
+                }];
+            // 4) 텍스트 오버레이 (편집 가능)
+            if (texts && texts.length > 0) {
+                for (const t of texts) {
+                    try {
+                        const fw = t.fontWeight || 400;
+                        let font = DEFAULT_FONT;
+                        if (fw >= 700)
+                            font = BOLD_FONT;
+                        else if (fw >= 500)
+                            font = MEDIUM_FONT;
+                        yield figma.loadFontAsync(font);
+                        const textNode = figma.createText();
+                        textNode.fontName = font;
+                        textNode.characters = t.text;
+                        textNode.fontSize = t.fontSize || 14;
+                        textNode.name = t.text.substring(0, 30);
+                        const color = parseColor(t.color || "#131720");
+                        if (color)
+                            textNode.fills = [{ type: "SOLID", color }];
+                        if (t.textAlign === "center")
+                            textNode.textAlignHorizontal = "CENTER";
+                        else if (t.textAlign === "right")
+                            textNode.textAlignHorizontal = "RIGHT";
+                        textNode.x = t.x;
+                        textNode.y = t.y;
+                        if (t.width > 0) {
+                            textNode.resize(t.width, t.height || textNode.height);
+                            textNode.textAutoResize = "HEIGHT";
+                        }
+                        // 텍스트를 보이지 않게 (이미지 위에 겹침) - 투명하게 설정
+                        textNode.opacity = 0;
+                        frame.appendChild(textNode);
+                    }
+                    catch (e) {
+                        // 개별 텍스트 실패 무시
+                    }
+                }
+            }
+            // 5) 인터랙티브 존 (버튼/인풋 — 컴포넌트 교체용 투명 프레임)
+            if (zones && zones.length > 0) {
+                for (const z of zones) {
+                    const zone = figma.createFrame();
+                    zone.name = (z.tag === "button" ? "Button" : z.tag === "input" ? "Input" : "Zone") + " / " + (z.text || z.placeholder || "interactive");
+                    zone.resize(z.width, z.height);
+                    zone.x = z.x;
+                    zone.y = z.y;
+                    zone.fills = []; // 투명
+                    zone.strokes = []; // 보더 없음
+                    zone.opacity = 0; // 완전 투명 (선택은 가능)
+                    frame.appendChild(zone);
+                }
+            }
+            // 6) 위치 배치 (왼쪽→오른쪽 나열)
+            if (screenIndex === 0) {
+                const center = figma.viewport.center;
+                importStartX = Math.round(center.x);
+                importStartY = Math.round(center.y);
+            }
+            frame.x = importStartX + screenIndex * (width + 40);
+            frame.y = importStartY;
+            figma.currentPage.appendChild(frame);
+            if (screenIndex === totalScreens - 1) {
+                const allFrames = [];
+                for (let i = 0; i <= screenIndex; i++) {
+                    const n = figma.currentPage.children[figma.currentPage.children.length - 1 - (screenIndex - i)];
+                    if (n)
+                        allFrames.push(n);
+                }
+                figma.viewport.scrollAndZoomIntoView(allFrames);
+            }
+            figma.notify("✅ (" + (screenIndex + 1) + "/" + totalScreens + ") " + name);
+            figma.ui.postMessage({ action: "import-html-done", success: true, name });
+        }
+        catch (e) {
+            figma.notify("임포트 실패: " + e.message);
+            figma.ui.postMessage({ action: "import-html-done", success: false, error: e.message });
+        }
+    }
+    // HTML 가져오기 (기존 방식 폴백)
     if (msg.action === "import-html") {
         const tree = msg.tree;
         const name = msg.name || "Imported Screen";
@@ -790,6 +1065,164 @@ figma.ui.onmessage = (msg) => __awaiter(void 0, void 0, void 0, function* () {
         catch (e) {
             figma.notify("임포트 실패: " + e.message);
             figma.ui.postMessage({ action: "import-html-done", success: false, error: e.message });
+        }
+    }
+    // ★ MCP 브릿지 명령 처리
+    if (msg.action === "mcp-command") {
+        const cmd = msg.command;
+        const cmdId = cmd.id;
+        try {
+            let result = {};
+            // 컴포넌트 목록 조회
+            if (cmd.action === "list-components") {
+                if (cachedComponents.length === 0)
+                    cachedComponents = scanComponents();
+                result = cachedComponents.map((c) => ({ name: c.name, type: c.type, variants: c.variants.length }));
+            }
+            // 화면 조립
+            else if (cmd.action === "build-screen") {
+                if (cachedComponents.length === 0)
+                    cachedComponents = scanComponents();
+                const spec = cmd.spec;
+                const screenIndex = cmd.screenIndex || 0;
+                const frame = yield buildScreen(spec, screenIndex);
+                if (screenIndex === 0) {
+                    const center = figma.viewport.center;
+                    importStartX = Math.round(center.x);
+                    importStartY = Math.round(center.y);
+                }
+                frame.x = importStartX + screenIndex * (spec.width + 40);
+                frame.y = importStartY;
+                figma.currentPage.appendChild(frame);
+                figma.viewport.scrollAndZoomIntoView([frame]);
+                result = { success: true, name: spec.name, nodeId: frame.id };
+                figma.notify("✅ " + spec.name + " 생성 완료");
+            }
+            // 컴포넌트 인스턴스 배치
+            else if (cmd.action === "place-component") {
+                if (cachedComponents.length === 0)
+                    cachedComponents = scanComponents();
+                const nameLC = (cmd.componentName || "").toLowerCase().replace(/[\s_\-]/g, "");
+                const matched = cachedComponents.find((c) => c.type === "COMPONENT_SET" && c.name.toLowerCase().replace(/[\s_\-]/g, "") === nameLC) || cachedComponents.find((c) => c.type === "COMPONENT" && c.name.toLowerCase().replace(/[\s_\-]/g, "") === nameLC);
+                if (matched) {
+                    const instance = matched.type === "COMPONENT_SET"
+                        ? createInstanceFromSet(matched.id, cmd.variantProps || {})
+                        : createInstanceFromComponent(matched.id);
+                    if (instance) {
+                        if (cmd.x !== undefined)
+                            instance.x = cmd.x;
+                        if (cmd.y !== undefined)
+                            instance.y = cmd.y;
+                        figma.currentPage.appendChild(instance);
+                        result = { success: true, nodeId: instance.id };
+                    }
+                }
+                else {
+                    result = { success: false, error: "컴포넌트를 찾을 수 없습니다: " + cmd.componentName };
+                }
+            }
+            // 노드 상세 정보 (자식 포함)
+            else if (cmd.action === "inspect-node") {
+                const sel = figma.currentPage.selection;
+                if (sel.length === 0) {
+                    result = { error: "선택된 노드 없음" };
+                }
+                else {
+                    const inspectNode = (n, depth) => {
+                        const info = {
+                            id: n.id, name: n.name, type: n.type,
+                            width: Math.round(n.width), height: Math.round(n.height),
+                            x: Math.round(n.x), y: Math.round(n.y),
+                        };
+                        // fills
+                        if ("fills" in n && Array.isArray(n.fills) && n.fills.length > 0) {
+                            const f = n.fills[0];
+                            if (f.type === "SOLID") {
+                                info.fill = "#" + [f.color.r, f.color.g, f.color.b].map((c) => Math.round(c * 255).toString(16).padStart(2, "0")).join("");
+                            }
+                        }
+                        // corner radius
+                        if ("cornerRadius" in n && typeof n.cornerRadius === "number") {
+                            info.cornerRadius = n.cornerRadius;
+                        }
+                        // text
+                        if (n.type === "TEXT") {
+                            const tn = n;
+                            info.characters = tn.characters;
+                            info.fontSize = tn.fontSize;
+                            info.fontName = tn.fontName;
+                            info.fontWeight = typeof tn.fontWeight === "number" ? tn.fontWeight : undefined;
+                            info.textAlignHorizontal = tn.textAlignHorizontal;
+                            info.lineHeight = tn.lineHeight;
+                        }
+                        // auto layout
+                        if ("layoutMode" in n) {
+                            const frame = n;
+                            if (frame.layoutMode !== "NONE") {
+                                info.layoutMode = frame.layoutMode;
+                                info.itemSpacing = frame.itemSpacing;
+                                info.paddingTop = frame.paddingTop;
+                                info.paddingRight = frame.paddingRight;
+                                info.paddingBottom = frame.paddingBottom;
+                                info.paddingLeft = frame.paddingLeft;
+                            }
+                        }
+                        // opacity
+                        if ("opacity" in n && n.opacity !== 1) {
+                            info.opacity = n.opacity;
+                        }
+                        // strokes
+                        if ("strokes" in n && Array.isArray(n.strokes) && n.strokes.length > 0) {
+                            const s = n.strokes[0];
+                            if (s.type === "SOLID") {
+                                info.stroke = "#" + [s.color.r, s.color.g, s.color.b].map((c) => Math.round(c * 255).toString(16).padStart(2, "0")).join("");
+                                info.strokeWeight = n.strokeWeight;
+                            }
+                        }
+                        // children (depth 제한)
+                        if ("children" in n && depth < 3) {
+                            info.children = n.children.map((c) => inspectNode(c, depth + 1));
+                        }
+                        return info;
+                    };
+                    result = sel.map((n) => inspectNode(n, 0));
+                }
+            }
+            // 현재 선택 정보 (variant 상세 포함)
+            else if (cmd.action === "get-selection") {
+                const sel = figma.currentPage.selection;
+                result = sel.map((n) => {
+                    const info = { id: n.id, name: n.name, type: n.type, width: Math.round(n.width), height: Math.round(n.height) };
+                    if (n.type === "COMPONENT_SET") {
+                        const set = n;
+                        info.variants = set.children.map((c) => c.name);
+                        // variant property 키/값 추출
+                        const propKeys = {};
+                        for (const child of set.children) {
+                            child.name.split(",").forEach((seg) => {
+                                const kv = seg.split("=").map((s) => s.trim());
+                                if (kv[0] && kv[1]) {
+                                    if (!propKeys[kv[0]])
+                                        propKeys[kv[0]] = new Set();
+                                    propKeys[kv[0]].add(kv[1]);
+                                }
+                            });
+                        }
+                        info.properties = {};
+                        for (const [k, v] of Object.entries(propKeys)) {
+                            info.properties[k] = Array.from(v);
+                        }
+                    }
+                    else if (n.type === "COMPONENT") {
+                        info.variantName = n.name;
+                    }
+                    return info;
+                });
+            }
+            figma.ui.postMessage({ action: "mcp-result", commandId: cmdId, result });
+        }
+        catch (e) {
+            figma.ui.postMessage({ action: "mcp-result", commandId: cmdId, result: { error: e.message } });
         }
     }
     // 인스턴스 배치
