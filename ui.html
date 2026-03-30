@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', system-ui, sans-serif; padding: 16px; background: #fff; color: #131720; }
+  h2 { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+
+  .btn {
+    width: 100%; padding: 12px; border: none; border-radius: 8px;
+    font-size: 13px; font-weight: 700; cursor: pointer; margin-bottom: 8px;
+  }
+  .btn-primary { background: #0047ff; color: #fff; }
+  .btn-primary:hover { background: #0039cc; }
+  .btn-secondary { background: #f5f7fa; color: #131720; border: 1px solid #e3e8ef; }
+  .btn-secondary:hover { background: #e3e8ef; }
+  .btn-small { width: auto; padding: 6px 14px; font-size: 12px; display: inline-block; }
+  .btn-large { padding: 16px; font-size: 15px; border-radius: 12px; }
+
+  .status { padding: 10px; background: #f5f7fa; border-radius: 8px; font-size: 12px; color: #677489; margin-bottom: 12px; text-align: center; }
+  .status.success { background: #e8f5e9; color: #2e7d32; }
+  .status.error { background: #ffebee; color: #c62828; }
+
+  .selection-info {
+    padding: 12px; background: #f8f9fb; border: 1px solid #e3e8ef; border-radius: 8px;
+    font-size: 12px; color: #677489; margin-bottom: 12px;
+  }
+  .selection-info .frame-name { font-weight: 700; color: #131720; font-size: 13px; }
+  .selection-info .frame-meta { margin-top: 4px; }
+
+  .match-list { margin-top: 12px; max-height: 200px; overflow-y: auto; }
+  .match-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 6px; font-size: 12px; margin-bottom: 4px;
+  }
+  .match-item.good { background: #e8f5e9; }
+  .match-item.none { background: #fff3e0; }
+  .match-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .match-dot.good { background: #2e7d32; }
+  .match-dot.none { background: #e65100; }
+  .match-arrow { color: #9aa5b8; margin: 0 2px; }
+  .match-comp { font-weight: 600; color: #0047ff; }
+  .match-layer { color: #677489; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .divider { height: 1px; background: #e3e8ef; margin: 16px 0; }
+
+  .tab-bar { display: flex; border-bottom: 2px solid #e3e8ef; margin-bottom: 16px; }
+  .tab {
+    flex: 1; padding: 10px 0; text-align: center; font-size: 12px; font-weight: 600;
+    color: #9aa5b8; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px;
+  }
+  .tab.active { color: #0047ff; border-bottom-color: #0047ff; }
+
+  .section { margin-bottom: 12px; }
+  .section-title { font-size: 11px; font-weight: 700; color: #9aa5b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .empty { text-align: center; padding: 20px; color: #9aa5b8; font-size: 13px; }
+
+  .comp-list { display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; }
+  .comp-item {
+    padding: 10px 12px; border: 1px solid #e3e8ef; border-radius: 8px;
+    cursor: pointer; transition: all 0.15s; font-size: 13px;
+  }
+  .comp-item:hover { border-color: #0047ff; background: #f5f7fa; }
+  .comp-item.selected { border-color: #0047ff; background: #eef2ff; }
+  .comp-item .name { font-weight: 600; }
+  .comp-item .meta { font-size: 11px; color: #9aa5b8; margin-top: 2px; }
+
+  .variant-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; max-height: 120px; overflow-y: auto; }
+  .variant-chip {
+    padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    border: 1px solid #e3e8ef; background: #fff; cursor: pointer; transition: all 0.15s;
+  }
+  .variant-chip:hover { border-color: #0047ff; color: #0047ff; }
+  .variant-chip.selected { background: #0047ff; color: #fff; border-color: #0047ff; }
+  #variant-section { display: none; }
+
+  textarea {
+    width: 100%; min-height: 160px; padding: 12px; border: 1px solid #e3e8ef;
+    border-radius: 8px; font-family: 'SF Mono', 'Menlo', monospace; font-size: 11px;
+    line-height: 1.5; resize: vertical; outline: none; color: #131720;
+  }
+  textarea:focus { border-color: #0047ff; }
+  .help-box {
+    padding: 12px; background: #f5f7fa; border-radius: 8px; font-size: 11px;
+    color: #677489; line-height: 1.6; margin-bottom: 12px;
+  }
+  .copy-box {
+    padding: 10px 12px; background: #f8f9fb; border: 1px dashed #d1d8e2; border-radius: 8px;
+    font-family: 'SF Mono', 'Menlo', monospace; font-size: 10px; line-height: 1.4;
+    color: #4a5567; max-height: 100px; overflow-y: auto; margin-bottom: 8px;
+    word-break: break-all; cursor: pointer;
+  }
+  .copy-box:hover { background: #eef2ff; border-color: #0047ff; }
+</style>
+</head>
+<body>
+  <h2>Gmoney DS Builder</h2>
+  <div id="status" class="status">준비됨</div>
+
+  <div class="tab-bar">
+    <div class="tab active" onclick="switchTab('html', this)">HTML 가져오기</div>
+    <div class="tab" onclick="switchTab('apply', this)">컴포넌트 입히기</div>
+    <div class="tab" onclick="switchTab('build', this)">화면 조립</div>
+  </div>
+
+  <!-- HTML 가져오기 탭 -->
+  <div id="tab-html">
+    <div class="help-box">
+      <strong>HTML → Figma 직접 변환</strong><br>
+      기획서 HTML을 붙여넣으면 피그마 프레임으로 변환합니다.<br>
+      MCP나 외부 플러그인 없이 자체 처리합니다.
+    </div>
+    <div id="name-section" class="section" style="display:none;">
+      <div class="section-title">화면 이름 (단일 화면용)</div>
+      <input type="text" id="html-name" placeholder="CT002 - Login" style="width:100%;padding:8px 12px;border:1px solid #e3e8ef;border-radius:6px;font-size:13px;margin-bottom:8px;outline:none;font-family:inherit;">
+    </div>
+    <div class="section">
+      <div class="section-title">HTML 파일 또는 붙여넣기</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <button class="btn btn-primary" onclick="document.getElementById('file-input').click()" style="flex:1;">HTML 파일 불러오기</button>
+        <input type="file" id="file-input" accept=".html,.htm" style="display:none;" onchange="loadFile(this)">
+      </div>
+      <div id="file-info" style="display:none;padding:8px 12px;background:#e8f5e9;border-radius:6px;font-size:12px;color:#2e7d32;margin-bottom:8px;"></div>
+      <textarea id="html-input" style="min-height:120px;" placeholder="또는 여기에 HTML 직접 붙여넣기"></textarea>
+    </div>
+    <button class="btn btn-primary btn-large" onclick="importHTML()">피그마로 가져오기</button>
+    <div id="html-log" style="margin-top:8px;font-size:11px;color:#677489;"></div>
+  </div>
+
+  <!-- 컴포넌트 입히기 탭 -->
+  <div id="tab-apply" style="display:none">
+    <div id="selection-box" class="selection-info">
+      <div style="color:#9aa5b8;">프레임을 선택해주세요</div>
+    </div>
+
+    <button class="btn btn-primary btn-large" onclick="applyComponents()">
+      컴포넌트 입히기
+    </button>
+
+    <button class="btn btn-secondary btn-small" onclick="previewMatches()">매칭 미리보기</button>
+    <button class="btn btn-secondary btn-small" onclick="scan()" style="margin-left:4px;">재스캔</button>
+
+    <div id="match-preview" class="match-list"></div>
+  </div>
+
+  <!-- 화면 조립 탭 -->
+  <div id="tab-build" style="display:none;">
+    <div class="help-box">
+      <strong>사용법:</strong><br>
+      1. 디자인 시스템(localhost:5173)에서 컴포넌트 옆 <b>Figma JSON</b> 버튼 클릭<br>
+      2. 복사된 JSON을 아래에 붙여넣기<br>
+      3. "컴포넌트 생성" 클릭
+    </div>
+    <div class="section">
+      <div class="section-title">JSON 붙여넣기</div>
+      <textarea id="json-input" placeholder='{
+  "name": "Bottom Sheet - Access / body / 1_primary",
+  "width": 360,
+  "height": 780,
+  "elements": [
+    {
+      "componentName": "Bottom Sheet",
+      "variantProps": { "contents": "Access", "text": "body", "button": "1_primary" }
+    }
+  ]
+}'></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="buildByName()">컴포넌트 생성</button>
+    <div class="divider"></div>
+    <div class="section">
+      <div class="section-title">컴포넌트 맵 (Claude 전달용)</div>
+      <div id="comp-map" class="copy-box" onclick="copyMap()">로딩 중...</div>
+      <button class="btn btn-secondary btn-small" onclick="copyMap()">복사</button>
+    </div>
+  </div>
+
+  <!-- 인스턴스 탭 -->
+  <div id="tab-instance" style="display:none;">
+    <div class="section">
+      <div class="section-title">컴포넌트 목록</div>
+      <div id="comp-list" class="comp-list">
+        <div class="empty">로딩 중...</div>
+      </div>
+    </div>
+    <div id="variant-section" class="section">
+      <div class="section-title">Variant 선택</div>
+      <div id="variant-list" class="variant-list"></div>
+    </div>
+    <button class="btn btn-primary" onclick="placeInstance()">인스턴스 배치</button>
+  </div>
+
+<script>
+  var components = [];
+  var selectedComp = null;
+  var selectedVariant = null;
+
+  function switchTab(tab, el) {
+    document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+    el.classList.add('active');
+    document.getElementById('tab-html').style.display = tab === 'html' ? 'block' : 'none';
+    document.getElementById('tab-apply').style.display = tab === 'apply' ? 'block' : 'none';
+    document.getElementById('tab-build').style.display = tab === 'build' ? 'block' : 'none';
+  }
+
+  // --- 파일 불러오기 ---
+  function loadFile(input) {
+    var file = input.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var content = e.target.result;
+      document.getElementById('html-input').value = content;
+      document.getElementById('file-info').style.display = 'block';
+      var isMulti = content.indexOf('class="screen"') >= 0 || content.indexOf("class='screen'") >= 0;
+      var screenCount = (content.match(/class="screen"/g) || []).length;
+      document.getElementById('file-info').textContent = file.name + ' (' + Math.round(content.length / 1024) + 'KB)' + (isMulti ? ' · ' + screenCount + '개 화면 감지' : '');
+      // 멀티 스크린이면 이름 입력칸 숨김
+      document.getElementById('name-section').style.display = isMulti ? 'none' : 'block';
+      var name = file.name.replace(/\.html?$/i, '').replace(/_/g, ' ');
+      document.getElementById('html-name').value = name;
+      setStatus('파일 로드 완료' + (isMulti ? ' (' + screenCount + '개 화면)' : ''), 'success');
+    };
+    reader.readAsText(file);
+  }
+
+  // --- HTML 가져오기 ---
+  var importIframe = null;
+
+  function importHTML() {
+    var html = document.getElementById('html-input').value.trim();
+    var name = document.getElementById('html-name').value.trim() || 'Imported Screen';
+    if (!html) { setStatus('HTML을 입력해주세요', 'error'); return; }
+
+    setStatus('파싱 중...');
+    var log = document.getElementById('html-log');
+    log.textContent = '';
+
+    // 전체 HTML 페이지인지 확인
+    var isFullPage = html.indexOf('<html') >= 0 || html.indexOf('<style') >= 0 || html.indexOf('class=') >= 0;
+
+    if (isFullPage) {
+      importFullHTML(html, name);
+    } else {
+      try {
+        var tree = parseSimpleHTML(html);
+        log.textContent = '노드 파싱 완료, 피그마로 전송 중...';
+        parent.postMessage({ pluginMessage: { action: 'import-html', tree: tree, name: name } }, '*');
+      } catch (e) {
+        setStatus('파싱 에러: ' + e.message, 'error');
+      }
+    }
+  }
+
+  // 전체 HTML 페이지 (CSS 클래스 포함) 처리
+  function importFullHTML(html, baseName) {
+    var log = document.getElementById('html-log');
+
+    // iframe으로 렌더링
+    if (importIframe) importIframe.remove();
+    importIframe = document.createElement('iframe');
+    importIframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;height:1200px;border:none;';
+    document.body.appendChild(importIframe);
+
+    var doc = importIframe.contentDocument;
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    setTimeout(function() {
+      try {
+        // .screen 클래스가 있는 화면들 찾기
+        var screens = doc.querySelectorAll('.screen');
+        var phoneEl = doc.querySelector('.phone');
+
+        if (screens.length > 0) {
+          // 멀티 스크린 모드
+          log.textContent = screens.length + '개 화면 감지됨. 순차 임포트 중...';
+          importScreensSequentially(doc, screens, phoneEl, baseName, 0);
+        } else {
+          // 단일 화면: .phone 또는 첫 번째 큰 요소
+          var root = phoneEl || doc.body.firstElementChild || doc.body;
+          var parentRect = root.getBoundingClientRect();
+          var tree = walkRenderedNode(doc, root, parentRect, 0);
+          if (tree) {
+            log.textContent = '단일 화면 파싱 완료, 전송 중...';
+            parent.postMessage({ pluginMessage: { action: 'import-html', tree: tree, name: baseName, screenIndex: 0, totalScreens: 1 } }, '*');
+          }
+        }
+      } catch (e) {
+        setStatus('파싱 에러: ' + e.message, 'error');
+        log.textContent = e.stack || '';
+      }
+    }, 500); // CSS 로드 대기
+  }
+
+  var importQueue = [];
+  var importTotal = 0;
+  var importDone = 0;
+
+  var nameMap = {
+    's-login': 'CT002 Login',
+    's-intro': 'CT033 Signup Intro',
+    's-terms': 'CT034 Terms',
+    's-send': 'CT005 Account Info',
+    's-verify': 'CT008 OTP Verification',
+    's-pw': 'CT010 Password',
+    's-done': 'CT014 Complete',
+    's-nation-full': 'CT035 Nationality',
+    's-sns-nation': 'CT035 SNS Nationality',
+    's-sns-contact': 'CT036 SNS Contact'
+  };
+
+  function importScreensSequentially(doc, screens, phoneEl, baseName, index) {
+    if (index >= screens.length) {
+      setStatus(screens.length + '개 화면 임포트 완료!', 'success');
+      if (importIframe) { importIframe.remove(); importIframe = null; }
+      return;
+    }
+
+    var log = document.getElementById('html-log');
+    var screen = screens[index];
+    var screenId = screen.id || ('screen-' + index);
+    var screenName = nameMap[screenId] || (baseName + ' - ' + screenId);
+    log.textContent = '(' + (index + 1) + '/' + screens.length + ') ' + screenName + ' 파싱 중...';
+
+    // 각 화면을 독립 iframe으로 렌더링 (360x800)
+    var styleText = '';
+    var origDoc = doc;
+    var styleTags = origDoc.querySelectorAll('style');
+    for (var s = 0; s < styleTags.length; s++) styleText += styleTags[s].textContent + '\n';
+
+    // status bar + nav bar HTML 추출
+    var statusBar = phoneEl ? phoneEl.querySelector('.status-bar') : null;
+    var navBar = phoneEl ? phoneEl.querySelector('.nav-bar') : null;
+    var statusHtml = statusBar ? statusBar.outerHTML : '';
+    var navHtml = navBar ? navBar.outerHTML : '';
+
+    // 독립 iframe 생성
+    var screenIframe = document.createElement('iframe');
+    screenIframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:360px;height:800px;border:none;';
+    document.body.appendChild(screenIframe);
+
+    var sdoc = screenIframe.contentDocument;
+    sdoc.open();
+    sdoc.write('<!DOCTYPE html><html><head><style>' + styleText +
+      'body{margin:0;padding:0;width:360px;height:800px;overflow:hidden;font-family:Roboto,sans-serif;background:#fff;}' +
+      '.screen{display:block!important;}' +
+      '.phone{display:none;}' +
+      '</style></head><body>' +
+      '<div style="width:360px;height:800px;background:#fff;overflow:hidden;">' +
+      statusHtml + navHtml + screen.outerHTML +
+      '</div></body></html>');
+    sdoc.close();
+
+    setTimeout(function() {
+      try {
+        var rootEl = sdoc.body.firstElementChild;
+        if (!rootEl) throw new Error('루트 요소 없음');
+
+        var parentRect = rootEl.getBoundingClientRect();
+        var tree = walkRenderedNode(sdoc, rootEl, parentRect, 0);
+        if (!tree) throw new Error('파싱 실패');
+
+        tree.styles.width = '360px';
+        tree.styles.height = '800px';
+        tree.x = 0;
+        tree.y = 0;
+
+        parent.postMessage({ pluginMessage: { action: 'import-html', tree: tree, name: screenName, screenIndex: index, totalScreens: screens.length } }, '*');
+
+        screenIframe.remove();
+
+        setTimeout(function() {
+          importScreensSequentially(origDoc, screens, phoneEl, baseName, index + 1);
+        }, 1000);
+      } catch (e) {
+        log.textContent = screenName + ' 에러: ' + e.message;
+        screenIframe.remove();
+        setTimeout(function() {
+          importScreensSequentially(origDoc, screens, phoneEl, baseName, index + 1);
+        }, 300);
+      }
+    }, 600);
+  }
+
+  // getBoundingClientRect 기반 — 브라우저 렌더링 결과를 그대로 사용
+  function walkRenderedNode(doc, el, parentRect, depth) {
+    if (!el || el.nodeType === 3) return null;
+    if (depth > 15) return null;
+
+    var tag = (el.tagName || '').toLowerCase();
+    if (tag === 'script' || tag === 'style' || tag === 'link') return null;
+
+    var cs = doc.defaultView.getComputedStyle(el);
+    if (cs.display === 'none') return null;
+
+    var rect = el.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return null;
+
+    // SVG
+    if (tag === 'svg') {
+      return {
+        tag: 'svg', text: '', children: [],
+        styles: {
+          width: Math.round(rect.width) + 'px',
+          height: Math.round(rect.height) + 'px'
+        },
+        x: Math.round(rect.left - parentRect.left),
+        y: Math.round(rect.top - parentRect.top)
+      };
+    }
+
+    // 스타일 추출 (시각적 속성만)
+    var styles = {};
+    styles.width = Math.round(rect.width) + 'px';
+    styles.height = Math.round(rect.height) + 'px';
+
+    // 배경색
+    var bg = cs.backgroundColor;
+    if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') styles.backgroundColor = bg;
+
+    // 보더
+    var br = cs.borderRadius;
+    if (br && br !== '0px') styles.borderRadius = br;
+    var bw = parseFloat(cs.borderTopWidth);
+    if (bw > 0) {
+      styles.borderWidth = cs.borderTopWidth;
+      styles.borderColor = cs.borderTopColor;
+    }
+
+    // 투명도
+    if (cs.opacity !== '1') styles.opacity = cs.opacity;
+
+    // 텍스트 스타일
+    styles.color = cs.color;
+    styles.fontSize = cs.fontSize;
+    styles.fontWeight = cs.fontWeight;
+    styles.lineHeight = cs.lineHeight;
+    styles.textAlign = cs.textAlign;
+    if (cs.textDecorationLine === 'underline') styles.textDecoration = 'underline';
+
+    // 직접 텍스트 수집
+    var directText = '';
+    var hasElementChildren = false;
+    for (var i = 0; i < el.childNodes.length; i++) {
+      if (el.childNodes[i].nodeType === 3) {
+        var t = el.childNodes[i].textContent.trim();
+        if (t) directText += (directText ? ' ' : '') + t;
+      } else if (el.childNodes[i].nodeType === 1) {
+        hasElementChildren = true;
+      }
+    }
+
+    // input/button placeholder
+    if (tag === 'input') {
+      directText = el.value || el.placeholder || '';
+      if (!directText) directText = ' ';
+      styles.backgroundColor = cs.backgroundColor;
+    }
+
+    // 자식 노드 (요소 자식이 있을 때만)
+    var children = [];
+    if (hasElementChildren) {
+      for (var i = 0; i < el.children.length; i++) {
+        var child = walkRenderedNode(doc, el.children[i], rect, depth + 1);
+        if (child) children.push(child);
+      }
+    }
+
+    return {
+      tag: tag,
+      text: directText,
+      styles: styles,
+      children: children,
+      x: Math.round(rect.left - parentRect.left),
+      y: Math.round(rect.top - parentRect.top)
+    };
+  }
+
+  // 단순 HTML (인라인 스타일만)
+  function parseSimpleHTML(html) {
+    var container = document.createElement('div');
+    container.innerHTML = html;
+    var root = container.firstElementChild || container;
+    return walkSimpleNode(root);
+  }
+
+  function walkSimpleNode(el) {
+    if (!el || el.nodeType === 3) {
+      var txt = (el && el.textContent) ? el.textContent.trim() : '';
+      return { tag: '', text: txt, styles: {}, children: [] };
+    }
+
+    var tag = (el.tagName || '').toLowerCase();
+    if (tag === 'script' || tag === 'style') return null;
+
+    var cs = el.style ? getInlineStyles(el) : {};
+
+    if (tag === 'svg') {
+      return {
+        tag: 'svg', text: '',
+        styles: { width: el.getAttribute('width') || '24', height: el.getAttribute('height') || '24' },
+        children: []
+      };
+    }
+
+    var children = [];
+    var directText = '';
+    for (var i = 0; i < el.childNodes.length; i++) {
+      var child = el.childNodes[i];
+      if (child.nodeType === 3) {
+        var t = child.textContent.trim();
+        if (t) directText += (directText ? ' ' : '') + t;
+      } else if (child.nodeType === 1) {
+        var parsed = walkSimpleNode(child);
+        if (parsed) children.push(parsed);
+      }
+    }
+
+    return { tag: tag, text: directText, styles: cs, children: children };
+  }
+
+  function getInlineStyles(el) {
+    var s = el.style;
+    var result = {};
+    var props = [
+      'width','height','minWidth','minHeight','maxWidth','maxHeight',
+      'padding','paddingTop','paddingRight','paddingBottom','paddingLeft',
+      'margin','marginTop','marginRight','marginBottom','marginLeft',
+      'background','backgroundColor',
+      'color','opacity',
+      'fontSize','fontWeight','fontFamily','lineHeight','letterSpacing',
+      'textAlign','textDecoration',
+      'display','flexDirection','alignItems','justifyContent','gap','flex','flexShrink','flexGrow',
+      'gridTemplateColumns',
+      'borderRadius','border','borderColor','borderWidth',
+      'overflow','position',
+      'boxShadow','backdropFilter'
+    ];
+    for (var i = 0; i < props.length; i++) {
+      var v = s[props[i]];
+      if (v) result[props[i]] = v;
+    }
+    return result;
+  }
+
+  function scan() {
+    setStatus('스캔 중...');
+    parent.postMessage({ pluginMessage: { action: 'scan' } }, '*');
+  }
+
+  function setStatus(msg, type) {
+    var el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status' + (type ? ' ' + type : '');
+  }
+
+  // --- 컴포넌트 입히기 ---
+  function applyComponents() {
+    setStatus('컴포넌트 교체 중...');
+    parent.postMessage({ pluginMessage: { action: 'apply-components' } }, '*');
+  }
+
+  function previewMatches() {
+    parent.postMessage({ pluginMessage: { action: 'preview-matches' } }, '*');
+  }
+
+  function renderPreview(matches) {
+    var container = document.getElementById('match-preview');
+    if (!matches || matches.length === 0) {
+      container.innerHTML = '<div class="empty" style="padding:12px;">매칭되는 컴포넌트 없음</div>';
+      return;
+    }
+    container.innerHTML = matches.map(function(m) {
+      var cls = m.hasMatch ? 'good' : 'none';
+      return '<div class="match-item ' + cls + '">'
+        + '<div class="match-dot ' + cls + '"></div>'
+        + '<div style="flex:1;">'
+        + '<div style="font-weight:600;font-size:12px;color:#131720;">' + m.componentType + '</div>'
+        + '<div style="font-size:10px;color:#677489;margin-top:2px;">' + m.variantString + '</div>'
+        + '<div style="font-size:10px;color:#9aa5b8;">' + m.width + '×' + m.height + ' · 신뢰도 ' + m.confidence + '%</div>'
+        + '</div>'
+        + '<span style="font-size:10px;font-weight:700;color:' + (m.hasMatch ? '#2e7d32' : '#e65100') + ';">'
+        + (m.hasMatch ? '매칭' : '없음') + '</span>'
+        + '</div>';
+    }).join('');
+  }
+
+  // --- 컴포넌트 맵 ---
+  function generateCompMap() {
+    return JSON.stringify(components.map(function(c) {
+      var obj = { id: c.id, name: c.name, type: c.type };
+      if (c.variants && c.variants.length > 0) {
+        var keys = {};
+        c.variants.forEach(function(v) {
+          v.split(',').forEach(function(seg) {
+            var parts = seg.split('=').map(function(s) { return s.trim(); });
+            if (parts[0] && parts[1]) {
+              if (!keys[parts[0]]) keys[parts[0]] = [];
+              if (keys[parts[0]].indexOf(parts[1]) === -1) keys[parts[0]].push(parts[1]);
+            }
+          });
+        });
+        obj.variantKeys = keys;
+      }
+      return obj;
+    }), null, 2);
+  }
+
+  function copyMap() {
+    var text = document.getElementById('comp-map').textContent;
+    if (text === '로딩 중...') return;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setStatus('컴포넌트 맵 복사됨!', 'success');
+    }
+  }
+
+  // --- 컴포넌트 목록 ---
+  function renderComponents() {
+    var list = document.getElementById('comp-list');
+    if (components.length === 0) {
+      list.innerHTML = '<div class="empty">컴포넌트 없음</div>';
+      return;
+    }
+    list.innerHTML = components.map(function(c, i) {
+      var meta = c.type === 'COMPONENT_SET' ? c.variants.length + '개 variant' : '단독';
+      return '<div class="comp-item" onclick="selectComp(' + i + ')" id="comp-' + i + '">'
+        + '<div class="name">' + c.name + '</div>'
+        + '<div class="meta">' + meta + '</div></div>';
+    }).join('');
+    document.getElementById('comp-map').textContent = generateCompMap();
+  }
+
+  function selectComp(index) {
+    selectedComp = components[index];
+    selectedVariant = null;
+    document.querySelectorAll('.comp-item').forEach(function(el) { el.classList.remove('selected'); });
+    var el = document.getElementById('comp-' + index);
+    if (el) el.classList.add('selected');
+    var variantSection = document.getElementById('variant-section');
+    var variantList = document.getElementById('variant-list');
+    if (selectedComp.type === 'COMPONENT_SET' && selectedComp.variants.length > 0) {
+      variantSection.style.display = 'block';
+      variantList.innerHTML = selectedComp.variants.map(function(v, i) {
+        return '<div class="variant-chip" onclick="selectVariant(' + i + ', this)">' + v + '</div>';
+      }).join('');
+    } else {
+      variantSection.style.display = 'none';
+    }
+  }
+
+  function selectVariant(index, el) {
+    selectedVariant = selectedComp.variants[index];
+    document.querySelectorAll('.variant-chip').forEach(function(c) { c.classList.remove('selected'); });
+    el.classList.add('selected');
+  }
+
+  function placeInstance() {
+    if (!selectedComp) { setStatus('컴포넌트를 선택해주세요', 'error'); return; }
+    if (selectedComp.type === 'COMPONENT_SET') {
+      var variantProps = {};
+      if (selectedVariant) {
+        selectedVariant.split(',').forEach(function(seg) {
+          var parts = seg.split('=').map(function(s) { return s.trim(); });
+          if (parts[0] && parts[1]) variantProps[parts[0]] = parts[1];
+        });
+      }
+      parent.postMessage({ pluginMessage: { action: 'place-instance', setId: selectedComp.id, variantProps: variantProps } }, '*');
+    } else {
+      parent.postMessage({ pluginMessage: { action: 'place-instance', compId: selectedComp.id } }, '*');
+    }
+  }
+
+  function buildByName() {
+    var input = document.getElementById('json-input').value.trim();
+    if (!input) { setStatus('JSON을 입력해주세요', 'error'); return; }
+    try {
+      var spec = JSON.parse(input);
+      parent.postMessage({ pluginMessage: { action: 'build-by-name', spec: spec } }, '*');
+      setStatus('컴포넌트 생성 중...');
+    } catch (e) {
+      setStatus('JSON 파싱 에러: ' + e.message, 'error');
+    }
+  }
+
+  // --- 메시지 수신 ---
+  onmessage = function(event) {
+    var msg = event.data.pluginMessage;
+    if (!msg) return;
+
+    if (msg.action === 'scan-result') {
+      components = msg.components;
+      setStatus(components.length + '개 컴포넌트 준비됨', 'success');
+      renderComponents();
+    }
+
+    if (msg.action === 'selection-changed') {
+      document.getElementById('selection-box').innerHTML =
+        '<div class="frame-name">' + msg.name + '</div>'
+        + '<div class="frame-meta">' + msg.width + ' × ' + msg.height + ' · ' + msg.childCount + '개 레이어</div>';
+      document.getElementById('match-preview').innerHTML = '';
+    }
+
+    if (msg.action === 'selection-cleared') {
+      document.getElementById('selection-box').innerHTML = '<div style="color:#9aa5b8;">프레임을 선택해주세요</div>';
+      document.getElementById('match-preview').innerHTML = '';
+    }
+
+    if (msg.action === 'apply-result') {
+      if (msg.replaced > 0) {
+        setStatus(msg.replaced + '/' + msg.found + '개 컴포넌트 교체 완료!', 'success');
+      } else if (msg.found > 0) {
+        setStatus('감지는 됐지만 피그마 컴포넌트 매칭 실패', 'error');
+      } else {
+        setStatus('매칭되는 컴포넌트를 찾지 못했습니다', 'error');
+      }
+      if (msg.details && msg.details.length > 0) {
+        var container = document.getElementById('match-preview');
+        container.innerHTML = msg.details.map(function(d) {
+          var cls = d.success ? 'good' : 'none';
+          return '<div class="match-item ' + cls + '">'
+            + '<div class="match-dot ' + cls + '"></div>'
+            + '<span style="font-weight:600;font-size:12px;">' + d.type + '</span>'
+            + '<span style="font-size:10px;color:#677489;margin-left:6px;">' + d.variant + '</span>'
+            + '<span style="margin-left:auto;font-size:10px;font-weight:700;color:' + (d.success ? '#2e7d32' : '#c62828') + ';">'
+            + (d.success ? '교체됨' : '실패') + '</span></div>';
+        }).join('');
+      }
+    }
+
+    if (msg.action === 'apply-error') {
+      setStatus(msg.message, 'error');
+    }
+
+    if (msg.action === 'preview-result') {
+      renderPreview(msg.matches);
+    }
+
+    if (msg.action === 'import-html-done') {
+      var log = document.getElementById('html-log');
+      if (msg.success) {
+        setStatus(msg.name + ' 임포트 완료!', 'success');
+        log.textContent = '피그마 캔버스에서 확인하세요.';
+      } else {
+        setStatus('임포트 실패', 'error');
+        log.textContent = msg.error || '';
+      }
+    }
+
+    if (msg.action === 'build-by-name-result') {
+      if (msg.placed > 0) {
+        setStatus(msg.placed + '/' + msg.total + '개 컴포넌트 생성 완료!', 'success');
+      } else {
+        setStatus('매칭되는 컴포넌트를 찾지 못했습니다', 'error');
+      }
+    }
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "Gmoney Design System Builder",
+  "id": "1620281048833275707",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "networkAccess": { "allowedDomains": ["none"] },
+  "documentAccess": "dynamic-page"
+}
